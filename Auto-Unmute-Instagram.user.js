@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram Auto Unmute Reels
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      2.0
 // @description  Auto unmutes Instagram Reels without constantly resetting
 // @author       Grok
 // @match        https://www.instagram.com/*
@@ -9,47 +9,66 @@
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
-
 (function () {
     'use strict';
+    console.log('🚀 Instagram Auto Unmute v2.0 started');
 
-    console.log('🚀 Instagram Auto Unmute v1.1 started');
+    const resetDone = new Set();
 
-    const resetDone = new Set(); // Track which videos we've already reset
+    function isVisible(el) {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    function stampId(video, index) {
+        if (!video.dataset.unmuterId) {
+            video.dataset.unmuterId = video.src || `video-${index}-${Date.now()}`;
+        }
+        return video.dataset.unmuterId;
+    }
 
     function unmute() {
-        // Unmute buttons
-        const buttons = document.querySelectorAll('div[aria-label="Unmute"], button[aria-label="Unmute"], [aria-label="Unmute"]');
-        
-        buttons.forEach(btn => {
-            if (btn.offsetParent !== null) {
-                btn.click();
-                console.log('✅ Unmute button clicked');
-            }
-        });
+        // Click visible unmute buttons
+        document.querySelectorAll('div[aria-label="Unmute"], button[aria-label="Unmute"], [aria-label="Unmute"]')
+            .forEach(btn => {
+                if (isVisible(btn)) {
+                    btn.click();
+                    console.log('✅ Unmute button clicked');
+                }
+            });
 
-        // Handle videos - reset only once
+        // Unmute videos and reset only once per video
         document.querySelectorAll('video').forEach((video, index) => {
-            const videoId = video.src || index;
-            
+            const id = stampId(video, index);
+
             if (video.muted) {
                 video.muted = false;
                 console.log('✅ Video unmuted');
             }
 
-            if (!resetDone.has(videoId)) {
+            if (!resetDone.has(id)) {
                 video.currentTime = 0;
-                resetDone.add(videoId);
+                resetDone.add(id);
                 console.log('✅ Video reset to start (once)');
             }
         });
+
+        // Prune stale IDs for videos no longer in the DOM
+        const liveIds = new Set(
+            Array.from(document.querySelectorAll('video'))
+                .map(v => v.dataset.unmuterId)
+                .filter(Boolean)
+        );
+        resetDone.forEach(id => {
+            if (!liveIds.has(id)) resetDone.delete(id);
+        });
     }
 
-    // Run less frequently
+    // Poll every 1.2s
     setInterval(unmute, 1200);
 
-    // One-time initial run
+    // Initial run
     setTimeout(unmute, 1000);
 
-    console.log('✅ Fixed Instagram script ready');
+    console.log('✅ Instagram script ready');
 })();
