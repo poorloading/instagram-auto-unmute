@@ -1,6 +1,6 @@
 # Instagram Auto Unmute Reels
 
-[![Userscript](https://img.shields.io/badge/userscript-v2.1.0-brightgreen)](Auto-Unmute-Instagram.user.js)
+[![Userscript](https://img.shields.io/badge/userscript-v2.2.0-brightgreen)](Auto-Unmute-Instagram.user.js)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A userscript that automatically unmutes Instagram Reels as you scroll — without overlapping audio and without restarting videos you're already watching.
@@ -26,10 +26,11 @@ Instagram mutes Reels by default and forgets your choice constantly. This script
 
 - 🔊 **Auto-unmute** — clicks Instagram's own unmute button *and* sets `video.muted = false` directly, so it works even when the button isn't rendered.
 - 🎯 **One active video at a time** — only the reel that is at least 60% on-screen is unmuted; every other `<video>` in the DOM (preloaded or off-screen reels) is force-muted, so audio never overlaps.
-- 🔄 **Rewinds only once** — each video is reset to `currentTime = 0` a single time, tracked in a `Set`, so mid-video playback is never interrupted.
+- 🔄 **Rewinds only once** — each source is reset to `currentTime = 0` a single time, so mid-video playback is never interrupted. Tracking is a `WeakMap` keyed on the element and its `currentSrc`, so an element Instagram reuses for the next reel is rewound again.
 - 📐 **Accurate visibility check** — uses `getBoundingClientRect()` to compute the on-screen *area ratio*, instead of a naive non-zero width/height test, so partially scrolled reels aren't mistaken for the active one.
 - ⚡ **Reactive + polled** — a debounced `MutationObserver` reacts to DOM changes (like scrolling to the next reel) in ~150 ms, backed by a 1.2 s interval as a safety net.
-- 🧹 **No memory growth** — stale video IDs are pruned from the tracking `Set` once their videos leave the DOM, which matters during long scrolling sessions.
+- 🧹 **No memory growth** — tracking lives in a `WeakMap` keyed on each `<video>`, so it is garbage-collected with the element. No `dataset` stamping, no `Set` to prune, no DOM mutation.
+- 🌍 **Localized labels** — add your UI language's unmute label to `UNMUTE_LABELS` if `aria-label="Unmute"` doesn't exist in your locale; the direct `muted = false` path keeps working either way.
 - 🔇 **Quiet console** — per-run logging is gated behind a `DEBUG` flag (off by default); only two startup lines are printed.
 
 ## Installation
@@ -67,17 +68,17 @@ Edit these constants near the top of the script:
 | `DEBUG` | `false` | Set to `true` for verbose per-action console logging. |
 | `VISIBILITY_THRESHOLD` | `0.6` | Fraction of a video's area that must be on-screen for it to count as "active". Lower it if reels stay muted on small windows. |
 | `POLL_INTERVAL_MS` | `1200` | Fallback polling interval in milliseconds. Raise it to reduce CPU usage. |
+| `UNMUTE_LABELS` | `['Unmute']` | `aria-label` values treated as the unmute button. Add your UI language's label if the button never gets clicked. |
 
 ## How it works
 
 The script runs on a debounced `MutationObserver` (~150 ms) plus a 1.2 s polling fallback, with a first pass 1 s after load. Each run:
 
-1. **Clicks visible unmute buttons** — queries `[aria-label="Unmute"]` and only acts on elements with a non-zero visible area.
-2. **Stamps each video with a stable ID** — `dataset.unmuterId`, derived from `video.src` (or a unique fallback), so IDs survive DOM reshuffles.
-3. **Picks the single active video** — scores every `<video>` by on-screen area ratio and takes the highest, provided it clears `VISIBILITY_THRESHOLD`.
-4. **Unmutes the active video, mutes the rest** — preloaded and off-screen reels are explicitly muted so they can't play audio in parallel.
-5. **Resets once per video** — `currentTime` is rewound to `0` only the first time a video becomes active.
-6. **Prunes the tracking set** — IDs for videos no longer in the DOM are dropped to prevent unbounded growth.
+1. **Clicks visible unmute buttons** — queries every selector in `UNMUTE_LABELS` and only acts on elements that are actually visible (`Element.checkVisibility()`, with an area-ratio fallback).
+2. **Picks the single active video** — scores every `<video>` by on-screen area ratio and takes the highest, provided it clears `VISIBILITY_THRESHOLD`.
+3. **Unmutes the active video, mutes the rest** — preloaded and off-screen reels are explicitly muted so they can't play audio in parallel.
+4. **Resets once per source** — `currentTime` is rewound to `0` only when the element's `currentSrc` differs from the one it was last rewound on, so a reused element restarts on the next reel without interrupting playback mid-video.
+5. **Keeps no tracking garbage** — the `WeakMap` entry is collected along with the element, so there is nothing to prune.
 
 ## Troubleshooting
 
@@ -91,11 +92,20 @@ The script runs on a debounced `MutationObserver` (~150 ms) plus a 1.2 s polling
 
 ## Known limitations
 
-- Instagram changes its DOM and `aria-label` values often; if the unmute button selector breaks, the direct `video.muted = false` path still works.
+- Instagram changes its DOM and `aria-label` values often, and localizes them per UI language. If the unmute button stops being clicked, add the current label to `UNMUTE_LABELS`; the direct `video.muted = false` path keeps working regardless.
 - Browser autoplay policies can require one user interaction per session before sound is allowed.
 - Only the desktop web app is targeted; mobile apps can't run userscripts.
 
 ## Changelog
+
+### v2.2.0
+- Fixed the rewind-once logic going stale: `dataset.unmuterId` was stamped once from `video.src` and never updated, so an element Instagram reused for the next reel still looked "already reset" and was never rewound. Tracking is now a `WeakMap` keyed on the element's `currentSrc`.
+- Switched the source check to `currentSrc` rather than `src`, which is empty for elements that load media through `<source>` children.
+- Dropped the `Set`-pruning pass; a `WeakMap` is collected with the element, so there is nothing to prune.
+- Unmute buttons are now checked with `Element.checkVisibility()` (area-ratio fallback) instead of a non-zero-area test, so a button 1px on screen is no longer clicked.
+- Added `UNMUTE_LABELS`, so a non-English UI label can be supported.
+- Wrapped the `currentTime = 0` seek in `try/catch`.
+- Dropped the redundant `https://www.instagram.com/*` `@match`; `https://*.instagram.com/*` already covers it.
 
 ### v2.1.0
 - Fixed a bug where every video on the page (including preloaded/off-screen reels) could be unmuted at once, causing overlapping audio

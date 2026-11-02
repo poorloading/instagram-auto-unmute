@@ -1,10 +1,9 @@
 // ==UserScript==
 // @name         Instagram Auto Unmute Reels
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.2.0
 // @description  Auto unmutes Instagram Reels without constantly resetting
-// @author       Grok
-// @match        https://www.instagram.com/*
+// @author       poorloading
 // @match        https://*.instagram.com/*
 // @grant        none
 // @run-at       document-idle
@@ -17,12 +16,20 @@
     const DEBUG = false; // flip to true for verbose console logging
     const VISIBILITY_THRESHOLD = 0.6; // fraction of a video's area that must be on-screen to count as "active"
     const POLL_INTERVAL_MS = 1200;
+    const UNMUTE_LABELS = ['Unmute']; // add your UI language's label(s) here
 
     const log = (...args) => DEBUG && console.log(...args);
 
-    console.log('🚀 Instagram Auto Unmute v2.1 started');
+    console.log('🚀 Instagram Auto Unmute v2.2.0 started');
 
-    const resetDone = new Set();
+    // One selector built from every localized label we know about.
+    const UNMUTE_SELECTOR = UNMUTE_LABELS.map(label => `[aria-label="${label}"]`).join(', ');
+
+    // WeakMap keyed on each <video>, storing the source we last rewound to.
+    // Instagram reuses the same element for the next reel, so the source — not
+    // the element — is what identifies "a different video". Keys are garbage
+    // collected with the element, so there is no Set to prune.
+    const lastResetSrc = new WeakMap();
 
     // Fraction (0-1) of the element that is currently within the viewport.
     function visibleRatio(el) {
@@ -41,16 +48,16 @@
         return totalArea > 0 ? visibleArea / totalArea : 0;
     }
 
-    function stampId(video, index) {
-        if (!video.dataset.unmuterId) {
-            video.dataset.unmuterId = video.src || `video-${index}-${Date.now()}`;
+    function isVisible(el) {
+        if (typeof el.checkVisibility === 'function') {
+            return el.checkVisibility();
         }
-        return video.dataset.unmuterId;
+        return visibleRatio(el) > 0;
     }
 
     function clickUnmuteButtons() {
-        document.querySelectorAll('[aria-label="Unmute"]').forEach(btn => {
-            if (visibleRatio(btn) > 0) {
+        document.querySelectorAll(UNMUTE_SELECTOR).forEach(btn => {
+            if (isVisible(btn)) {
                 btn.click();
                 log('✅ Unmute button clicked');
             }
@@ -68,8 +75,7 @@
         // or off-screen reels) is explicitly muted so audio never overlaps.
         let activeVideo = null;
         let bestRatio = 0;
-        videos.forEach((video, index) => {
-            stampId(video, index);
+        videos.forEach(video => {
             const ratio = visibleRatio(video);
             if (ratio > bestRatio) {
                 bestRatio = ratio;
@@ -85,10 +91,17 @@
                     video.muted = false;
                     log('✅ Active video unmuted');
                 }
-                const id = video.dataset.unmuterId;
-                if (!resetDone.has(id)) {
-                    video.currentTime = 0;
-                    resetDone.add(id);
+
+                // Rewind once per source, so a reused element still restarts
+                // when Instagram swaps in the next reel.
+                const src = video.currentSrc || video.src;
+                if (lastResetSrc.get(video) !== src) {
+                    try {
+                        video.currentTime = 0;
+                    } catch (err) {
+                        log('rewind failed', err);
+                    }
+                    lastResetSrc.set(video, src);
                     log('✅ Active video reset to start (once)');
                 }
             } else if (!video.muted) {
@@ -96,12 +109,6 @@
                 video.muted = true;
                 log('🔇 Non-active video muted');
             }
-        });
-
-        // Prune stale IDs for videos no longer in the DOM.
-        const liveIds = new Set(videos.map(v => v.dataset.unmuterId).filter(Boolean));
-        resetDone.forEach(id => {
-            if (!liveIds.has(id)) resetDone.delete(id);
         });
     }
 
