@@ -18,6 +18,7 @@ Instagram mutes Reels by default and forgets your choice constantly. This script
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 - [Known limitations](#known-limitations)
+- [Testing](#testing)
 - [Changelog](#changelog)
 - [Contributing](#contributing)
 - [License](#license)
@@ -124,6 +125,17 @@ The script runs on a debounced `MutationObserver` (~150 ms) plus a 1.2 s polling
 - Added a `resetDone` set to track already-reset videos, preventing repeated playback interruptions
 - Reduced the poll interval to 1.2 s for a lighter footprint
 - Broadened unmute button selectors to cover `div`, `button`, and generic attribute variants
+
+## Testing
+
+The core logic runs headlessly against a stubbed DOM, so no browser is needed:
+
+```
+node test/unmute.test.js
+```
+
+It covers active-reel selection, force-muting the non-active reels, and the
+rewind-once-per-source behaviour that v2.2.0 fixed. No dependencies — just Node.
 
 ## Contributing
 
