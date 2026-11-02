@@ -1,11 +1,16 @@
 # Instagram Auto Unmute Reels
 
-[![Userscript](https://img.shields.io/badge/userscript-v3.0.0-brightgreen)](Auto-Unmute-Instagram.user.js)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![license](https://img.shields.io/github/license/poorloading/instagram-auto-unmute)](LICENSE)
+[![last commit](https://img.shields.io/github/last-commit/poorloading/instagram-auto-unmute)](https://github.com/poorloading/instagram-auto-unmute/commits/main)
+[![Tampermonkey](https://img.shields.io/badge/userscript-Tampermonkey-orange)](Auto-Unmute-Instagram.user.js)
 
-A userscript that automatically unmutes Instagram Reels as you scroll — without overlapping audio and without restarting videos you're already watching.
+A Tampermonkey userscript that unmutes Instagram Reels as you scroll. Instagram
+mutes Reels by default and forgets your choice constantly; this script keeps the
+reel that's actually on your screen unmuted, and keeps every other video silent.
 
-Instagram mutes Reels by default and forgets your choice constantly. This script keeps the reel that's actually on your screen unmuted, and keeps every other video silent.
+No overlapping audio, and no restarting a video you're already halfway through.
+
+> **Also available for Facebook:** [facebook-auto-unmute](https://github.com/poorloading/facebook-auto-unmute)
 
 ---
 
@@ -14,10 +19,12 @@ Instagram mutes Reels by default and forgets your choice constantly. This script
 - [Features](#features)
 - [Installation](#installation)
 - [Requirements](#requirements)
+- [Usage](#usage)
 - [Configuration](#configuration)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 - [Known limitations](#known-limitations)
+- [Privacy](#privacy)
 - [Testing](#testing)
 - [Changelog](#changelog)
 - [Contributing](#contributing)
@@ -25,41 +32,64 @@ Instagram mutes Reels by default and forgets your choice constantly. This script
 
 ## Features
 
-- 🔊 **Auto-unmute** — clicks Instagram's own unmute button *and* sets `video.muted = false` directly, so it works even when the button isn't rendered.
-- 🎯 **One active video at a time** — only the reel that is at least 60% on-screen is unmuted; every other `<video>` in the DOM (preloaded or off-screen reels) is force-muted, so audio never overlaps.
-- 🔄 **Rewinds only once** — each source is reset to `currentTime = 0` a single time, so mid-video playback is never interrupted. Tracking is a `WeakMap` keyed on the element and its `currentSrc`, so an element Instagram reuses for the next reel is rewound again.
-- 📐 **Observer-driven visibility** — an `IntersectionObserver` reports how much of each reel is on screen, so the script never calls `getBoundingClientRect()` on a player. Partially scrolled reels are scored by their actual on-screen fraction.
-- ⚡ **Reacts on scroll** — the observer fires the moment a reel crosses the visibility threshold, with a `MutationObserver` for new players and a 5 s safety-net rescan.
-- 🪶 **No layout thrash** — because the browser supplies the ratios, there is no repeated forced layout on a long scrolling session.
-- 🧹 **No memory growth** — tracking lives in a `WeakMap` keyed on each `<video>`, so it is garbage-collected with the element. No `dataset` stamping, no `Set` to prune, no DOM mutation.
-- 🌍 **Localized labels** — add your UI language's unmute label to `UNMUTE_LABELS` if `aria-label="Unmute"` doesn't exist in your locale; the direct `muted = false` path keeps working either way.
-- 🔇 **Quiet console** — per-run logging is gated behind a `DEBUG` flag (off by default); only two startup lines are printed.
+- 🔊 **Sound on, automatically.** Clicks Instagram's own unmute button *and* sets
+  `video.muted = false` directly, so it works even when the button isn't
+  rendered.
+- 🎯 **One reel at a time.** Only the reel at least 60% on screen is unmuted;
+  every other `<video>` in the DOM, preloaded or off-screen, is force-muted. No
+  two reels talking over each other.
+- 🔄 **Doesn't restart what you're watching.** A reel you're halfway through
+  keeps playing. Rewinding happens once per video, never mid-playback, and a
+  reused element still restarts when Instagram moves on to the next reel.
+- 🧩 **Leaves the page alone.** It reads and toggles a `muted` attribute, nothing
+  more — no injected UI, no changes to Instagram's own elements.
+- 🌍 **Works in your language.** Unmute button labels are configurable, so a
+  non-English UI can be supported.
 
 ## Installation
 
 ### Option A — one-click (recommended)
 
-1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
+1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/)
+   or [Violentmonkey](https://violentmonkey.github.io/).
 2. Open the raw script and your manager will offer to install it:
    **[Install Auto-Unmute-Instagram.user.js](https://raw.githubusercontent.com/poorloading/instagram-auto-unmute/main/Auto-Unmute-Instagram.user.js)**
-3. Confirm the install, then open [instagram.com](https://www.instagram.com) — it runs automatically.
+3. Confirm the install, then open [instagram.com](https://www.instagram.com) — it
+   runs automatically.
 
-Because the script declares `@updateURL` / `@downloadURL`, your manager will check this repository for updates on its own.
+Because the script declares `@updateURL` / `@downloadURL`, your manager will
+check this repository for updates on its own.
 
 ### Option B — manual
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
+1. Install [Tampermonkey](https://www.tampermonkey.net/) or
+   [Violentmonkey](https://violentmonkey.github.io/).
 2. Open the extension → **Dashboard** → **+** (create a new script).
-3. Replace the template with the contents of [`Auto-Unmute-Instagram.user.js`](Auto-Unmute-Instagram.user.js).
+3. Replace the template with the contents of
+   [`Auto-Unmute-Instagram.user.js`](Auto-Unmute-Instagram.user.js).
 4. Save (`Ctrl`/`Cmd` + `S`) and reload Instagram.
 
-> **Note:** manual installs are not auto-updated unless you keep the `@updateURL` header intact.
+> **Note:** manual installs are not auto-updated unless you keep the
+> `@updateURL` header intact.
 
 ## Requirements
 
 - A Chromium-based browser (Chrome, Edge, Brave, Opera) or Firefox
-- [Tampermonkey](https://www.tampermonkey.net/) v4.0+ or [Violentmonkey](https://violentmonkey.github.io/) v2.12+
-- Runs on `https://*.instagram.com/*`; no special `@grant` permissions are requested
+- [Tampermonkey](https://www.tampermonkey.net/) v4.0+ or
+  [Violentmonkey](https://violentmonkey.github.io/) v2.12+
+- Runs on `https://*.instagram.com/*`; no special `@grant` permissions are
+  requested
+
+`Element.checkVisibility()` is used where available (Chrome 105+, Firefox 113+,
+Safari 16.4+); older browsers fall back to a box-size check.
+
+## Usage
+
+Once installed it runs automatically — there's nothing to click.
+
+If you want to watch it work, set `DEBUG = true` at the top of the script and
+open DevTools → Console. It's off by default; every action is logged when
+enabled.
 
 ## Configuration
 
@@ -68,36 +98,86 @@ Edit these constants near the top of the script:
 | Constant | Default | Description |
 | --- | --- | --- |
 | `DEBUG` | `false` | Set to `true` for verbose per-action console logging. |
-| `VISIBILITY_THRESHOLD` | `0.6` | Fraction of a video's area that must be on-screen for it to count as "active". Lower it if reels stay muted on small windows. |
+| `VISIBILITY_THRESHOLD` | `0.6` | Fraction of a reel's area that must be on screen for it to count as "active". Lower it if reels stay muted on small windows. |
 | `APPLY_DELAY_MS` | `120` | Debounce window that coalesces bursts of observer callbacks. |
 | `RESCAN_MS` | `5000` | Safety-net rescan interval. Raise it to reduce CPU usage. |
 | `UNMUTE_LABELS` | `['Unmute']` | `aria-label` values treated as the unmute button. Add your UI language's label if the button never gets clicked. |
 
+**Don't want the auto-rewind?** Delete (or comment out) the `video.currentTime =
+0;` block inside `applyMuteState()`. Unmuting will still work; reels just won't
+snap back to the start.
+
 ## How it works
 
-An `IntersectionObserver` watches every reel, alongside a `MutationObserver` for newly added players and a 5 s safety-net rescan. Each run:
+An `IntersectionObserver` watches every reel, alongside a `MutationObserver` for
+newly added players and a safety-net rescan. Each `applyMuteState()` run:
 
-1. **Clicks visible unmute buttons** — queries every selector in `UNMUTE_LABELS` and only acts on elements that are actually visible (`Element.checkVisibility()`, with an area-ratio fallback).
-2. **Picks the single active video** — takes the reel with the highest on-screen fraction the observer has reported, provided it clears `VISIBILITY_THRESHOLD`.
-3. **Unmutes the active video, mutes the rest** — preloaded and off-screen reels are explicitly muted so they can't play audio in parallel.
-4. **Resets once per source** — `currentTime` is rewound to `0` only when the element's `currentSrc` differs from the one it was last rewound on, so a reused element restarts on the next reel without interrupting playback mid-video.
-5. **Keeps no tracking garbage** — the `WeakMap` entry is collected along with the element, so there is nothing to prune.
+1. **Clicks visible unmute buttons** — queries every selector in `UNMUTE_LABELS`
+   and only acts on elements that are actually visible
+   (`Element.checkVisibility()`, with an area-ratio fallback).
+2. **Picks the single active video** — takes the reel with the highest on-screen
+   fraction the observer has reported, provided it clears
+   `VISIBILITY_THRESHOLD`.
+3. **Unmutes the active video, mutes the rest** — preloaded and off-screen reels
+   are explicitly muted so they can't play audio in parallel.
+4. **Resets once per source** — `currentTime` is rewound to `0` only when the
+   element's `currentSrc` differs from the one it was last rewound on, so a
+   reused element restarts on the next reel without interrupting playback
+   mid-video.
+5. **Keeps no tracking garbage** — the `WeakMap` entry is collected along with
+   the element, so there is nothing to prune.
+
+Under the hood, in case you're auditing it:
+
+- No reel is ever measured with `getBoundingClientRect()`; the observer supplies
+  the ratio, so there's no repeated forced layout during long scrolling
+  sessions.
+- Rewind state lives in a `WeakMap` keyed on each `<video>`, garbage-collected
+  with the element. No `dataset` stamping, no `Set` to prune, no DOM mutation.
+- Nothing is muted or unmuted until the observer has reported at least one
+  ratio, so the script never acts on a guess at startup.
+- Everything is behind a `DEBUG` flag, so the console stays quiet unless you ask
+  for it.
+- The script makes no network requests of its own.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
-| Nothing happens | Confirm the script is enabled in your manager's dashboard and that the page is `instagram.com`, then hard-reload (`Ctrl`/`Cmd` + `Shift` + `R`). |
+| Nothing happens | Confirm the script is enabled in your manager's dashboard and the page is `instagram.com`, then hard-reload (`Ctrl`/`Cmd` + `Shift` + `R`). |
 | Reels stay muted | Your browser may block autoplay with sound until you interact with the page — click once anywhere on Instagram. Also try lowering `VISIBILITY_THRESHOLD`. |
-| Audio from two reels at once | Should not happen on v2.1.0+; make sure you're not also running an older copy of this script. |
+| Audio from two reels at once | Shouldn't happen; make sure you're not also running an older copy of this script. |
 | Videos keep restarting | Make sure you're on v3.0.0 or later. Open an issue with your version if it persists. |
+| The unmute button never gets clicked | `aria-label="Unmute"` is the English label and Instagram localizes it. Add yours to `UNMUTE_LABELS` — the direct `muted = false` path still works without it. |
 | Want to see what it's doing | Set `DEBUG = true` and open DevTools → Console. |
 
 ## Known limitations
 
-- Instagram changes its DOM and `aria-label` values often, and localizes them per UI language. If the unmute button stops being clicked, add the current label to `UNMUTE_LABELS`; the direct `video.muted = false` path keeps working regardless.
-- Browser autoplay policies can require one user interaction per session before sound is allowed.
-- Only the desktop web app is targeted; mobile apps can't run userscripts.
+- **Desktop web only.** Mobile apps can't run userscripts.
+- **One reel at a time.** A reel that is mostly off-screen won't be unmuted, by
+  design. Lower `VISIBILITY_THRESHOLD` if that's too strict for your window size.
+- **Autoplay policies still apply.** Chrome and Firefox may require one
+  interaction with the page per session before sound is allowed at all. The
+  script can't override that.
+- **Instagram's markup changes.** Button labels are localized and renamed
+  occasionally. When that happens, add the new label to `UNMUTE_LABELS`.
+
+## Privacy
+
+The script runs entirely in your browser. It reads and modifies Instagram's page
+elements locally and makes **no network requests** of its own.
+
+## Testing
+
+The core logic runs headlessly against a stubbed DOM, so no browser is needed:
+
+```
+node test/unmute.test.js
+```
+
+It covers active-reel selection, force-muting the non-active reels,
+rewind-once-per-source, and asserts that no video is ever measured for layout.
+No dependencies — just Node.
 
 ## Changelog
 
@@ -135,20 +215,11 @@ An `IntersectionObserver` watches every reel, alongside a `MutationObserver` for
 - Reduced the poll interval to 1.2 s for a lighter footprint
 - Broadened unmute button selectors to cover `div`, `button`, and generic attribute variants
 
-## Testing
-
-The core logic runs headlessly against a stubbed DOM, so no browser is needed:
-
-```
-node test/unmute.test.js
-```
-
-It covers active-reel selection, force-muting the non-active reels, and the
-rewind-once-per-source behaviour that v2.2.0 fixed. No dependencies — just Node.
-
 ## Contributing
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you'd like to change. When reporting a bug, include your browser, userscript manager, script version, and any `DEBUG = true` console output.
+Pull requests are welcome. For major changes, please open an issue first to
+discuss what you'd like to change. When reporting a bug, include your browser,
+userscript manager, script version, and any `DEBUG = true` console output.
 
 ## License
 
