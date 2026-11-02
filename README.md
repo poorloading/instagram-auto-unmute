@@ -1,6 +1,6 @@
 # Instagram Auto Unmute Reels
 
-[![Userscript](https://img.shields.io/badge/userscript-v2.2.0-brightgreen)](Auto-Unmute-Instagram.user.js)
+[![Userscript](https://img.shields.io/badge/userscript-v3.0.0-brightgreen)](Auto-Unmute-Instagram.user.js)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A userscript that automatically unmutes Instagram Reels as you scroll — without overlapping audio and without restarting videos you're already watching.
@@ -28,8 +28,9 @@ Instagram mutes Reels by default and forgets your choice constantly. This script
 - 🔊 **Auto-unmute** — clicks Instagram's own unmute button *and* sets `video.muted = false` directly, so it works even when the button isn't rendered.
 - 🎯 **One active video at a time** — only the reel that is at least 60% on-screen is unmuted; every other `<video>` in the DOM (preloaded or off-screen reels) is force-muted, so audio never overlaps.
 - 🔄 **Rewinds only once** — each source is reset to `currentTime = 0` a single time, so mid-video playback is never interrupted. Tracking is a `WeakMap` keyed on the element and its `currentSrc`, so an element Instagram reuses for the next reel is rewound again.
-- 📐 **Accurate visibility check** — uses `getBoundingClientRect()` to compute the on-screen *area ratio*, instead of a naive non-zero width/height test, so partially scrolled reels aren't mistaken for the active one.
-- ⚡ **Reactive + polled** — a debounced `MutationObserver` reacts to DOM changes (like scrolling to the next reel) in ~150 ms, backed by a 1.2 s interval as a safety net.
+- 📐 **Observer-driven visibility** — an `IntersectionObserver` reports how much of each reel is on screen, so the script never calls `getBoundingClientRect()` on a player. Partially scrolled reels are scored by their actual on-screen fraction.
+- ⚡ **Reacts on scroll** — the observer fires the moment a reel crosses the visibility threshold, with a `MutationObserver` for new players and a 5 s safety-net rescan.
+- 🪶 **No layout thrash** — because the browser supplies the ratios, there is no repeated forced layout on a long scrolling session.
 - 🧹 **No memory growth** — tracking lives in a `WeakMap` keyed on each `<video>`, so it is garbage-collected with the element. No `dataset` stamping, no `Set` to prune, no DOM mutation.
 - 🌍 **Localized labels** — add your UI language's unmute label to `UNMUTE_LABELS` if `aria-label="Unmute"` doesn't exist in your locale; the direct `muted = false` path keeps working either way.
 - 🔇 **Quiet console** — per-run logging is gated behind a `DEBUG` flag (off by default); only two startup lines are printed.
@@ -58,7 +59,7 @@ Because the script declares `@updateURL` / `@downloadURL`, your manager will che
 
 - A Chromium-based browser (Chrome, Edge, Brave, Opera) or Firefox
 - [Tampermonkey](https://www.tampermonkey.net/) v4.0+ or [Violentmonkey](https://violentmonkey.github.io/) v2.12+
-- Runs on `https://www.instagram.com/*` and `https://*.instagram.com/*`; no special `@grant` permissions are requested
+- Runs on `https://*.instagram.com/*`; no special `@grant` permissions are requested
 
 ## Configuration
 
@@ -68,15 +69,16 @@ Edit these constants near the top of the script:
 | --- | --- | --- |
 | `DEBUG` | `false` | Set to `true` for verbose per-action console logging. |
 | `VISIBILITY_THRESHOLD` | `0.6` | Fraction of a video's area that must be on-screen for it to count as "active". Lower it if reels stay muted on small windows. |
-| `POLL_INTERVAL_MS` | `1200` | Fallback polling interval in milliseconds. Raise it to reduce CPU usage. |
+| `APPLY_DELAY_MS` | `120` | Debounce window that coalesces bursts of observer callbacks. |
+| `RESCAN_MS` | `5000` | Safety-net rescan interval. Raise it to reduce CPU usage. |
 | `UNMUTE_LABELS` | `['Unmute']` | `aria-label` values treated as the unmute button. Add your UI language's label if the button never gets clicked. |
 
 ## How it works
 
-The script runs on a debounced `MutationObserver` (~150 ms) plus a 1.2 s polling fallback, with a first pass 1 s after load. Each run:
+An `IntersectionObserver` watches every reel, alongside a `MutationObserver` for newly added players and a 5 s safety-net rescan. Each run:
 
 1. **Clicks visible unmute buttons** — queries every selector in `UNMUTE_LABELS` and only acts on elements that are actually visible (`Element.checkVisibility()`, with an area-ratio fallback).
-2. **Picks the single active video** — scores every `<video>` by on-screen area ratio and takes the highest, provided it clears `VISIBILITY_THRESHOLD`.
+2. **Picks the single active video** — takes the reel with the highest on-screen fraction the observer has reported, provided it clears `VISIBILITY_THRESHOLD`.
 3. **Unmutes the active video, mutes the rest** — preloaded and off-screen reels are explicitly muted so they can't play audio in parallel.
 4. **Resets once per source** — `currentTime` is rewound to `0` only when the element's `currentSrc` differs from the one it was last rewound on, so a reused element restarts on the next reel without interrupting playback mid-video.
 5. **Keeps no tracking garbage** — the `WeakMap` entry is collected along with the element, so there is nothing to prune.
@@ -88,7 +90,7 @@ The script runs on a debounced `MutationObserver` (~150 ms) plus a 1.2 s polling
 | Nothing happens | Confirm the script is enabled in your manager's dashboard and that the page is `instagram.com`, then hard-reload (`Ctrl`/`Cmd` + `Shift` + `R`). |
 | Reels stay muted | Your browser may block autoplay with sound until you interact with the page — click once anywhere on Instagram. Also try lowering `VISIBILITY_THRESHOLD`. |
 | Audio from two reels at once | Should not happen on v2.1.0+; make sure you're not also running an older copy of this script. |
-| Videos keep restarting | Ensure you're on v1.1 or later (the `resetDone` set). Open an issue with your version if it persists. |
+| Videos keep restarting | Make sure you're on v3.0.0 or later. Open an issue with your version if it persists. |
 | Want to see what it's doing | Set `DEBUG = true` and open DevTools → Console. |
 
 ## Known limitations
@@ -98,6 +100,13 @@ The script runs on a debounced `MutationObserver` (~150 ms) plus a 1.2 s polling
 - Only the desktop web app is targeted; mobile apps can't run userscripts.
 
 ## Changelog
+
+### v3.0.0
+- Replaced the 1.2 s poll with an `IntersectionObserver`. The browser reports each reel's on-screen fraction when it crosses a threshold, so the script no longer calls `getBoundingClientRect()` on any player — the repeated forced layout during long scrolling sessions is gone.
+- The poll survives only as a `RESCAN_MS` (5 s) safety net for state changes that touch no DOM, such as a reel re-muting itself.
+- New reels are handed to the observer from the `MutationObserver`, and `RATIO_THRESHOLDS` includes `VISIBILITY_THRESHOLD` so a callback fires exactly at the decision boundary.
+- Nothing is unmuted or muted until the observer has reported a ratio, so the script no longer acts on a guess at startup.
+- `POLL_INTERVAL_MS` is gone, replaced by `APPLY_DELAY_MS` and `RESCAN_MS`.
 
 ### v2.2.0
 - Fixed the rewind-once logic going stale: `dataset.unmuterId` was stamped once from `video.src` and never updated, so an element Instagram reused for the next reel still looked "already reset" and was never rewound. Tracking is now a `WeakMap` keyed on the element's `currentSrc`.
